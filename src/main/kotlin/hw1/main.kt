@@ -5,6 +5,7 @@ import htsjdk.samtools.fastq.FastqReader
 import htsjdk.samtools.fastq.FastqRecord
 import java.io.File
 import java.lang.Math
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -55,22 +56,27 @@ fun main(ars: Array<String>) {
         val plt: Plot = Plot.create()
 
         plt.plot().add(gcContents.indices.map { i -> (i + 0.5) / gcBuckets}, gcContents.map(Int::toDouble))
-        plt.savefig("./gc.png").dpi(200.0)
-        plt.show()
-
+        val dir = "./hw1_output"
+        Files.createDirectories(Paths.get(dir))
+        plt.savefig("$dir/gc.png").dpi(200.0)
+        plt.executeSilently()
+        plt.close()
 
         println(Paths.get(".").toAbsolutePath())
 
-        for (i in gcContents.indices) {
-            println("${i.toDouble() / gcBuckets} - ${(i + 1).toDouble() / gcBuckets} :  ${gcContents[i]}")
-        }
-
+        val poses: MutableList<Double> = ArrayList()
+        val qualities: MutableList<Double> = ArrayList()
         for (i in qualitySum.indices) {
             if (readCount[i] == 0) {
                 continue
             }
-            println("$i ${(qualitySum[i] / readCount[i]).toPhredScore()}")
+            poses.add(i.toDouble())
+            val phredScore = (qualitySum[i] / readCount[i]).toPhredScore()
+            qualities.add(phredScore.toDouble())
         }
-
+        plt.plot().add(poses, qualities)
+        plt.savefig("$dir/qual.png")
+        plt.executeSilently()
+        plt.close()
     }
 }
