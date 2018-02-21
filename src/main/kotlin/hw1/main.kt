@@ -5,6 +5,8 @@ import htsjdk.samtools.fastq.FastqReader
 import htsjdk.samtools.fastq.FastqRecord
 import java.io.File
 import java.lang.Math
+import java.nio.file.Path
+import java.nio.file.Paths
 
 fun Int.fromPhredScore(): Double = Math.pow(10.0, -this.toDouble() / 10.0)
 
@@ -53,7 +55,11 @@ fun main(ars: Array<String>) {
         val plt: Plot = Plot.create()
 
         plt.plot().add(gcContents.indices.map { i -> (i + 0.5) / gcBuckets}, gcContents.map(Int::toDouble))
+        plt.savefig("./gc.png").dpi(200.0)
         plt.show()
+
+
+        println(Paths.get(".").toAbsolutePath())
 
         for (i in gcContents.indices) {
             println("${i.toDouble() / gcBuckets} - ${(i + 1).toDouble() / gcBuckets} :  ${gcContents[i]}")
