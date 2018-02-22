@@ -120,7 +120,7 @@ class QualitiesStats: Stats {
 }
 
 class KmerStats: Stats {
-    val kmerCount = mutableMapOf<String,Int>()
+    val kmerCount = Array(9, { mutableMapOf<Int,Int>() })
     override fun addRead(readString: String, quality: ByteArray) {
         for (i in readString.indices) {
             for (k in 1..8) {
@@ -130,7 +130,7 @@ class KmerStats: Stats {
                 }
                 if (k >= 2) {
                     val kmer = readString.substring(i, i+k)
-                    kmerCount[kmer] = (kmerCount[kmer] ?: 0) + 1
+                    kmerCount[k].compute(kmer.hashCode(), { _, count -> (count ?: 0) + 1 })
                 }
             }
         }
@@ -138,8 +138,7 @@ class KmerStats: Stats {
 
     override fun saveFigures(dir: String) {
         for (k in 2..8) {
-            val kmerCounts = kmerCount.toList()
-                    .filter { (kmer , _) -> kmer.length == k }
+            val kmerCounts = kmerCount[k].toList()
                     .sortedByDescending { (_, count) -> count }
 
 
