@@ -11,11 +11,12 @@ import kotlin.math.roundToInt
 
 fun main(ars: Array<String>) {
 
-    val path_test = "/Johnny/data/input/Bacteria/E.coli/K12/is220/cropped/s_6.first10000_1.fastq.gz"
-    val path_run = "/Johnny/data/input/Bacteria/E.coli/K12/ucsd_lane_1/ecoli_mda_lane1.fastq"
+    val pathTest = "/Johnny/data/input/Bacteria/E.coli/K12/is220/cropped/s_6.first10000_1.fastq.gz"
+    val pathRun = "/Johnny/data/input/Bacteria/E.coli/K12/ucsd_lane_1/ecoli_mda_lane1.fastq"
 
-    val file = File(path_test)
-    val output_dir = "./hw1_output"
+    val file = File(pathTest)
+    val outputDir = "./hw1_output"
+    val oldIllumina = false
 
     FastqReader(file).use {
         var reads = 0
@@ -30,14 +31,22 @@ fun main(ars: Array<String>) {
 
             val readString = fastqRecord.readString
             val quality = fastqRecord.baseQualities
+            if (oldIllumina) {
+                for (i in quality.indices) {
+                    quality[i] = (quality[i] - (64 - 33)).toByte()
+                }
+            }
 
+            if (reads < 10) {
+                println(quality.contentToString())
+            }
             require(readString.length == quality.size)
 
             stats.forEach { it.addRead(readString, quality) }
         }
 
-        Files.createDirectories(Paths.get(output_dir))
-        stats.forEach { it.saveFigures(output_dir) }
+        Files.createDirectories(Paths.get(outputDir))
+        stats.forEach { it.saveFigures(outputDir) }
     }
 }
 
