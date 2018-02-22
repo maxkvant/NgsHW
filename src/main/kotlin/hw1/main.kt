@@ -7,6 +7,7 @@ import java.io.File
 import java.lang.Math
 import java.nio.file.Files
 import java.nio.file.Paths
+import kotlin.math.roundToInt
 
 fun main(ars: Array<String>) {
 
@@ -51,7 +52,7 @@ interface Stats {
 }
 
 class GcStats: Stats {
-    private val gcBuckets = 10
+    private val gcBuckets = 100
     private val gcContents = Array<Int>(gcBuckets + 1, {0})
 
     override fun addRead(readString: String, quality: ByteArray) {
@@ -120,7 +121,10 @@ class QualitiesStats: Stats {
 }
 
 class KmerStats: Stats {
-    val kmerCount = Array(9, { mutableMapOf<Int,Int>() })
+    val kmerCount = Array(9, { i ->
+        val size = Math.pow(5.0, i.toDouble()).roundToInt() + 1
+        Array<Int>(size, {0})
+    })
     override fun addRead(readString: String, quality: ByteArray) {
         for (i in readString.indices) {
             var hash = 0
@@ -144,7 +148,7 @@ class KmerStats: Stats {
                 hash = hash * 5 + nucleotideCode
 
                 if (k >= 2) {
-                    kmerCount[k][hash] = (kmerCount[k][hash]  ?: 0) + 1
+                    kmerCount[k][hash] = kmerCount[k][hash] + 1
                 }
             }
         }
@@ -152,8 +156,9 @@ class KmerStats: Stats {
 
     override fun saveFigures(dir: String) {
         for (k in 2..8) {
-            val kmerCounts = kmerCount[k].toList()
-                    .sortedByDescending { (_, count) -> count }
+            val kmerCounts = kmerCount[k].toList().withIndex()
+                .filter { (_, count) -> count > 0 }
+                .sortedByDescending { (_, count) -> count }
 
 
             val plt: Plot = Plot.create()
