@@ -52,7 +52,7 @@ fun main(ars: Array<String>) {
 
 fun Int.fromPhredScore(): Double = Math.pow(10.0, -this.toDouble() / 10.0)
 
-fun Double.toPhredScore(): Int = (-10.0 * Math.log10(this)).roundToInt()
+fun Double.toPhredScore(): Double = -10.0 * Math.log10(this)
 
 val qualityCutOff = 4
 
@@ -118,6 +118,7 @@ class QualitiesStats: Stats {
 
         val poses: MutableList<Double> = ArrayList()
         val qualities: MutableList<Double> = ArrayList()
+        val qualities2: MutableList<Double> = ArrayList()
         val probabilities: MutableList<Double> = ArrayList()
         for (i in qualitySum.indices) {
             if (readCount[i] == 0) {
@@ -125,15 +126,22 @@ class QualitiesStats: Stats {
             }
             poses.add(i.toDouble())
             qualities.add(qualitySum[i] / readCount[i])
-            probabilities.add(probabilitySum[i] / readCount[i])
+            val pAverage: Double = probabilitySum[i] / readCount[i]
+            qualities2.add(pAverage.toPhredScore())
+            probabilities.add(pAverage)
         }
+
 
         plt.xlabel("position")
         plt.ylabel("quality average")
         plt.ylim(0, qualities.max()!! + 1)
-        plt.plot().add(poses, qualities, ".")
+        plt.plot().add(poses, qualities, ".").label("quality average")
+        plt.legend().loc(0)
+        plt.plot().add(poses, qualities2, "r+").label("log(average exp(quality))")
+        plt.legend().loc(  0)
         plt.savefig("$dir/qual_q.png")
         plt.executeSilently()
+        plt.close()
 
         plt.xlabel("position")
         plt.ylabel("probability average")
