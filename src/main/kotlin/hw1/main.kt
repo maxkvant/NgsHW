@@ -137,7 +137,7 @@ class QualitiesStats: Stats {
         plt.ylim(0, qualities.max()!! + 1)
         plt.plot().add(poses, qualities, ".").label("quality average")
         plt.legend().loc(0)
-        plt.plot().add(poses, qualities2, "r+").label("log(average exp(quality))")
+        plt.plot().add(poses, qualities2, "r+").label("phred_score(probability_average)")
         plt.legend().loc(  0)
         plt.savefig("$dir/qual_q.png")
         plt.executeSilently()
