@@ -123,14 +123,28 @@ class KmerStats: Stats {
     val kmerCount = Array(9, { mutableMapOf<Int,Int>() })
     override fun addRead(readString: String, quality: ByteArray) {
         for (i in readString.indices) {
+            var hash = 0
             for (k in 1..8) {
                 val j = i + k - 1
-                if (j >= readString.length || quality[j] < qualityCutOff || readString[j] == 'n') {
+                if (j >= readString.length) {
                     break
                 }
+                val nucleotide = readString[j]
+                if (quality[j] < qualityCutOff || nucleotide == 'n') {
+                    break
+                }
+
+                val nucleotideCode = when (nucleotide) {
+                    'a' -> 1
+                    'c' -> 2
+                    'g' -> 3
+                    't' -> 4
+                    else -> 0
+                }
+                hash = hash * 5 + nucleotideCode
+
                 if (k >= 2) {
-                    val kmer = readString.substring(i, i+k)
-                    kmerCount[k].compute(kmer.hashCode(), { _, count -> (count ?: 0) + 1 })
+                    kmerCount[k][hash] = (kmerCount[k][hash]  ?: 0) + 1
                 }
             }
         }
