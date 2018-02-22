@@ -102,12 +102,14 @@ class QualitiesStats: Stats {
     private val readLen = 300
 
     private val qualitySum: Array<Double> = Array(readLen, { 0.0 })
+    private val probabilitySum: Array<Double> = Array(readLen, { 0.0 })
     private val readCount: Array<Int> = Array(readLen, {0})
 
     override fun addRead(readString: String, quality: ByteArray) {
         for (i in readString.indices) {
             readCount[i]++
-            qualitySum[i] += quality[i].toInt().fromPhredScore()
+            qualitySum[i] += quality[i].toDouble()
+            probabilitySum[i] += quality[i].toInt().fromPhredScore()
         }
     }
 
@@ -116,20 +118,28 @@ class QualitiesStats: Stats {
 
         val poses: MutableList<Double> = ArrayList()
         val qualities: MutableList<Double> = ArrayList()
+        val probabilities: MutableList<Double> = ArrayList()
         for (i in qualitySum.indices) {
             if (readCount[i] == 0) {
                 continue
             }
             poses.add(i.toDouble())
-            val phredScore = (qualitySum[i] / readCount[i]).toPhredScore()
-            qualities.add(phredScore.toDouble())
+            qualities.add(qualitySum[i] / readCount[i])
+            probabilities.add(probabilitySum[i] / readCount[i])
         }
 
         plt.xlabel("position")
         plt.ylabel("quality average")
         plt.ylim(0, qualities.max()!! + 1)
         plt.plot().add(poses, qualities, ".")
-        plt.savefig("$dir/qual.png")
+        plt.savefig("$dir/qual_q.png")
+        plt.executeSilently()
+
+        plt.xlabel("position")
+        plt.ylabel("probability average")
+        plt.ylim(0, probabilities.max()!! * 1.03)
+        plt.plot().add(poses, probabilities, "v")
+        plt.savefig("$dir/qual_p.png")
         plt.executeSilently()
     }
 }
