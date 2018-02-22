@@ -129,7 +129,7 @@ class KmerStats: Stats {
                 if (j >= readString.length) {
                     break
                 }
-                val nucleotide = readString[j]
+                val nucleotide = readString[j].toLowerCase()
                 if (quality[j] < qualityCutOff || nucleotide == 'n') {
                     break
                 }
