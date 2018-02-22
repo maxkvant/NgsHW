@@ -9,18 +9,25 @@ import java.nio.file.Files
 import java.nio.file.Paths
 import kotlin.math.roundToInt
 
+interface Stats {
+    //добавить инфомацию о риде (для подсчёта статистики)
+    fun addRead(readString: String, quality: ByteArray)
+
+    //сохранить графики в папку dir
+    fun saveFigures(dir: String)
+}
+
 fun main(ars: Array<String>) {
-
-    val pathTest = "/Johnny/data/input/Bacteria/E.coli/K12/is220/cropped/s_6.first10000_1.fastq.gz"
     val pathRun = "/Johnny/data/input/Bacteria/E.coli/K12/ucsd_lane_1/ecoli_mda_lane1.fastq"
+    //val pathTest = "/Johnny/data/input/Bacteria/E.coli/K12/is220/cropped/s_6.first10000_1.fastq.gz"
 
-    val file = File(pathTest)
+    val file = File(pathRun)
     val outputDir = "./hw1_output"
-    val oldIllumina = false
+    val oldIllumina = true
 
     FastqReader(file).use {
         var reads = 0
-        val stats = listOf(GcStats(), QualitiesStats(), KmerStats())
+        val stats: List<Stats> = listOf(GcStats(), QualityStats(), KmerSpectrumStats())
 
         it.iterator().forEach { fastqRecord: FastqRecord ->
             reads++
@@ -37,9 +44,6 @@ fun main(ars: Array<String>) {
                 }
             }
 
-            if (reads < 10) {
-                println(quality.contentToString())
-            }
             require(readString.length == quality.size)
 
             stats.forEach { it.addRead(readString, quality) }
@@ -56,11 +60,8 @@ fun Double.toPhredScore(): Double = -10.0 * Math.log10(this)
 
 val qualityCutOff = 4
 
-interface Stats {
-    fun addRead(readString: String, quality: ByteArray)
-    fun saveFigures(dir: String)
-}
-
+//строит GC график
+//    график получается не гладкий, как это поправить?
 class GcStats: Stats {
     private val gcBuckets = 77
     private val gcContents = Array<Int>(gcBuckets + 1, {0})
@@ -98,7 +99,8 @@ class GcStats: Stats {
     }
 }
 
-class QualitiesStats: Stats {
+//Строит графики среднего качества, средней вероятности ошибки
+class QualityStats : Stats {
     private val readLen = 300
 
     private val qualitySum: Array<Double> = Array(readLen, { 0.0 })
@@ -152,7 +154,8 @@ class QualitiesStats: Stats {
     }
 }
 
-class KmerStats: Stats {
+//Строит спектр k-меров
+class KmerSpectrumStats : Stats {
     val kmerCount = Array(9, { i ->
         val size = Math.pow(5.0, i.toDouble()).roundToInt() + 1
         Array<Int>(size, {0})
