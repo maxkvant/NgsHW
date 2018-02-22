@@ -36,13 +36,14 @@ fun main(ars: Array<String>) {
             stats.forEach { it.addRead(readString, quality) }
         }
 
+        Files.createDirectories(Paths.get(output_dir))
         stats.forEach { it.saveFigures(output_dir) }
     }
 }
 
 fun Int.fromPhredScore(): Double = Math.pow(10.0, -this.toDouble() / 10.0)
 
-fun Double.toPhredScore() = Math.round(-10.0 * Math.log10(this))
+fun Double.toPhredScore(): Int = (-10.0 * Math.log10(this)).roundToInt()
 
 val qualityCutOff = 4
 
@@ -52,7 +53,7 @@ interface Stats {
 }
 
 class GcStats: Stats {
-    private val gcBuckets = 100
+    private val gcBuckets = 77
     private val gcContents = Array<Int>(gcBuckets + 1, {0})
 
     override fun addRead(readString: String, quality: ByteArray) {
@@ -69,8 +70,7 @@ class GcStats: Stats {
             nucleotides++
 
             if (nucleotides != 0) {
-                val gcContent = gc.toDouble() / nucleotides
-                val gcBucket = Math.floor(gcContent * gcBuckets).toInt()
+                val gcBucket = gc * gcBuckets / nucleotides
                 gcContents[gcBucket]++
             }
         }
@@ -78,10 +78,12 @@ class GcStats: Stats {
 
     override fun saveFigures(dir: String) {
         val plt: Plot = Plot.create()
+        plt.ylabel("# reads")
+        plt.xlabel("% gc")
+        plt.plot().add(gcContents.indices.map { i -> (i + 0.5) / gcBuckets},
+                       gcContents.toList(),
+                "r+")
 
-        plt.plot().add(gcContents.indices.map { i -> (i + 0.5) / gcBuckets}, gcContents.map(Int::toDouble))
-
-        Files.createDirectories(Paths.get(dir))
         plt.savefig("$dir/gc.png").dpi(200.0)
         plt.executeSilently()
     }
@@ -114,7 +116,10 @@ class QualitiesStats: Stats {
             qualities.add(phredScore.toDouble())
         }
 
-        plt.plot().add(poses, qualities)
+        plt.xlabel("position")
+        plt.ylabel("quality average")
+        plt.ylim(0, qualities.max()!! + 1)
+        plt.plot().add(poses, qualities, ".")
         plt.savefig("$dir/qual.png")
         plt.executeSilently()
     }
@@ -125,6 +130,7 @@ class KmerStats: Stats {
         val size = Math.pow(5.0, i.toDouble()).roundToInt() + 1
         Array<Int>(size, {0})
     })
+
     override fun addRead(readString: String, quality: ByteArray) {
         for (i in readString.indices) {
             var hash = 0
@@ -147,22 +153,33 @@ class KmerStats: Stats {
                 }
                 hash = hash * 5 + nucleotideCode
 
-                if (k >= 2) {
-                    kmerCount[k][hash] = kmerCount[k][hash] + 1
-                }
+                kmerCount[k][hash]++
             }
         }
     }
 
     override fun saveFigures(dir: String) {
         for (k in 2..8) {
-            val kmerCounts = kmerCount[k].toList().withIndex()
-                .filter { (_, count) -> count > 0 }
-                .sortedByDescending { (_, count) -> count }
-
+            val kmerCounts = kmerCount[k].toList()
+                .filter { it > 0 }
+            val maxCount = kmerCounts.max() ?: 0
+            val buckets = 200
+            val distribution = Array(buckets + 1, {0.0})
+            kmerCounts.forEach {
+                val bucket = (it.toLong() * buckets) / maxCount
+                distribution[bucket.toInt()] += 1.0 / kmerCounts.size * buckets
+            }
 
             val plt: Plot = Plot.create()
-            plt.plot().add(kmerCounts.indices.map(Int::toDouble), kmerCounts.map { (_, count) -> count })
+            plt.title("${k}mer spectrum")
+            plt.ylabel("density")
+            plt.xlabel("# copy number")
+            plt.ylim(0, distribution.max()!! + 1)
+            plt.plot().add(
+                    distribution.indices.map { (it + 0.5) * maxCount / buckets },
+                    distribution.toList(),
+                    "r+"
+            )
             plt.savefig("$dir/${k}mers.png")
             plt.executeSilently()
         }
