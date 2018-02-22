@@ -24,7 +24,7 @@ fun main(ars: Array<String>) {
             reads++
             val infoCount = 100000
             if (reads % infoCount == 0) {
-                println("processed $infoCount reads")
+                println("processed $reads reads")
             }
 
             val readString = fastqRecord.readString
