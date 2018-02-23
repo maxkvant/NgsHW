@@ -61,9 +61,8 @@ fun Double.toPhredScore(): Double = -10.0 * Math.log10(this)
 val qualityCutOff = 4
 
 //строит GC график
-//    график получается не гладкий, как это поправить?
 class GcStats: Stats {
-    private val gcBuckets = 77
+    private val gcBuckets = 100
     private val gcContents = Array<Int>(gcBuckets + 1, {0})
 
     override fun addRead(readString: String, quality: ByteArray) {
@@ -78,11 +77,10 @@ class GcStats: Stats {
                 gc++
             }
             nucleotides++
-
-            if (nucleotides != 0) {
-                val gcBucket = gc * gcBuckets / nucleotides
-                gcContents[gcBucket]++
-            }
+        }
+        if (nucleotides > readString.length * 0.5) {
+            val gcBucket = gc * gcBuckets / nucleotides
+            gcContents[gcBucket]++
         }
     }
 
