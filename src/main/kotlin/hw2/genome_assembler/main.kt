@@ -33,12 +33,13 @@ fun main(args: Array<String>) {
 
     FastqReader(file).use {
         var reads = 0
-        reads++
-        val infoCount = 100000
-        if (reads % infoCount == 0) {
-            println("processed $reads reads")
-        }
         it.iterator().forEach { fastqRecord: FastqRecord ->
+            reads++
+            val infoCount = 100000
+            if (reads % infoCount == 0) {
+                println("processed $reads reads")
+            }
+
             val readChars = fastqRecord.readString.toLowerCase().toCharArray()
             for (i in 0 .. readChars.size - K) {
                 val kmer1: Kmer = String(readChars, i, K)
