@@ -1,55 +1,105 @@
 package hw2.genome_assembler
 
-import htsjdk.samtools.fastq.FastqReader
-import htsjdk.samtools.fastq.FastqRecord
+import K
+import Kmer
+import guru.nidi.graphviz.engine.Format
+import guru.nidi.graphviz.engine.Graphviz
+import guru.nidi.graphviz.parse.Parser
 import java.io.File
+import kotlin.math.*
 
-typealias Kmer = String
-val K = 55
-fun Kmer.reverseComplement(): Kmer {
-    val chars = this.toCharArray()
-    chars.reverse()
-    for (i in chars.indices) {
-        val c = chars[i]
-        chars[i] = when (c) {
-            'a' -> 't'
-            't' -> 'a'
-            'g' -> 'c'
-            'c' -> 'g'
-            else -> 'n'
+val outDir = "hw2_output"
+
+fun buildGraph(reader: SeqReader): DebruijnGraph {
+    val kmers: MutableSet<Kmer> = mutableSetOf()
+
+    reader.forCharArraysComplement { chars ->
+        for (i in 0 .. chars.size - K) {
+            val kmer: Kmer = String(chars, i, K)
+            if (!kmer.contains('n')) {
+                kmers.add(kmer)
+            }
         }
     }
-    return String(chars)
+
+    val debruijnGraph = DebruijnGraph(kmers)
+
+    reader.forCharArraysComplement { chars ->
+        for (i in 0 .. chars.size - (K + 1)) {
+            val edgeStr = String(chars, i, K + 1)
+            debruijnGraph.addEdge(edgeStr)
+        }
+    }
+
+    val lowCoverage = min(10.0, 0.1 * debruijnGraph.allEdges().map { it.coverageAverage }.average())
+    debruijnGraph.removeEdges(lowCoverage)
+    debruijnGraph.contract()
+    return debruijnGraph
+}
+
+fun outputPng(dotStr: String, fileName: String) {
+    val gr = Parser.read(dotStr)
+    val outfile = File("$outDir/$fileName.png")
+    val dotFile = File("$outDir/$fileName.dot")
+    println(Format.PNG)
+    dotFile.writeText(dotStr)
+    Graphviz.fromGraph(gr).render(Format.PNG).toFile(outfile)
+}
+
+fun outputFasta(edges: List<DebruijnGraph.Edge>, fileName: String) {
+    val outfile = File("$outDir/$fileName.fasta")
+    val sb = StringBuilder()
+    edges.sortedByDescending { it.str.length }
+            .withIndex()
+            .forEach { (i, edge) ->
+                sb.appendln(">edge_${i}_len_${edge.fullString.length}_cov_${edge.coverageAverage} ${edge.fromStr} -> ${edge.toStr}")
+                sb.appendln(edge.fullString)
+                sb.appendln()
+            }
+    outfile.writeText(sb.toString())
+
+}
+
+fun toDotStr(edges: List<DebruijnGraph.Edge>): String {
+    val vertices = edges.flatMap { listOf(it.fromStr, it.toStr) } .toSet()
+    val sb = StringBuilder()
+    vertices.forEach {
+        sb.appendln(it)
+    }
+    sb.appendln()
+    edges.forEach { edge ->
+        val label = "len=${edge.str.length}\ncov=${edge.coverageAverage.roundToInt()}"
+        sb.appendln("${edge.fromStr} -> ${edge.toStr} [label=\"$label\"]")
+    }
+    return "digraph debruijn {\n" + sb.toString() + "}\n"
 }
 
 fun main(args: Array<String>) {
-    val startTime = System.nanoTime();
+    val inputDir = "/media/maxim/DATA/Downloads/NGS/data"
 
-    val pathTest = "/Johnny/data/input/Bacteria/E.coli/K12/is220/cropped/s_6.first10000_1.fastq.gz"
+    val paths = listOf(
+            "ECOLI_IS220_QUAKE_1K_paired_reads.fasta"
+            , "ECOLI_IS220_QUAKE_1K_single_reads.fasta"
+            , "s_6.first10000.fastq"
+            , "s_6.first1000.fastq"
+            , "test1.fasta"
+            , "test2.fasta"
+            , "s_6.first100000.fastq"
+    )
 
-    val file = File(pathTest)
-
-    val kmers: MutableMap<Kmer, Int> = mutableMapOf()
-
-    FastqReader(file).use {
-        var reads = 0
-        it.iterator().forEach { fastqRecord: FastqRecord ->
-            reads++
-            val infoCount = 100000
-            if (reads % infoCount == 0) {
-                println("processed $reads reads")
-            }
-
-            val readChars = fastqRecord.readString.toLowerCase().toCharArray()
-            for (i in 0 .. readChars.size - K) {
-                val kmer1: Kmer = String(readChars, i, K)
-                val kmer2 = kmer1.reverseComplement()
-                kmers[kmer1] = (kmers[kmer1] ?: 0) + 1
-                kmers[kmer2] = (kmers[kmer2] ?: 0) + 1
-            }
+    paths.forEach { path ->
+        val file = File("$inputDir/$path")
+        val name = path.substring(0, path.length - ".fast_".length)
+        val reader = when {
+            path.endsWith(".fasta") -> FastaSeqReader(file)
+            path.endsWith(".fastq") -> FastqSeqReader(file)
+            else -> throw RuntimeException()
         }
+
+        val debruijnGraph = buildGraph(reader)
+        val edges = debruijnGraph.allEdges()
+
+        outputFasta(edges, name)
+        outputPng(toDotStr(edges), name)
     }
-
-    print("${System.nanoTime() - startTime}")
-
 }
