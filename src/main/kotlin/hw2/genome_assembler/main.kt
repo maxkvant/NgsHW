@@ -81,19 +81,25 @@ fun main(args: Array<String>) {
     val inputDir = "/media/maxim/DATA/Downloads/NGS/data"
 
     val pathsAll = listOf(
-    //        "ECOLI_IS220_QUAKE_1K_paired_reads.fasta"
-    //        , "ECOLI_IS220_QUAKE_1K_single_reads.fasta"
-            "s_6.first10000.fastq"
+            "ECOLI_IS220_QUAKE_1K_paired_reads.fasta"
+            , "ECOLI_IS220_QUAKE_1K_single_reads.fasta"
+            , "s_6.first10000.fastq"
             , "s_6.first1000.fastq"
-    //        , "test1.fasta"
-    //        , "test2.fasta"
+            , "test1.fasta"
+            , "test2.fasta"
             , "s_6.first100000.fastq"
-    )
+    ).map {
+        "$inputDir/$it"
+    }
 
+    val pathsRun = listOf("/Johnny/data/input/Bacteria/E.coli/K12/ucsd_lane_1/ecoli_mda_lane1.fastq")
 
-    pathsAll.forEach { path ->
-        val file = File("$inputDir/$path")
-        val name = path.substring(0, path.length - ".fast_".length)
+    val paths = pathsAll
+
+    paths.forEach { path ->
+        val file = File(path)
+        val name = path.substring(0, path.length - ".fast_".length).split("/").last()
+        println(name)
         val reader = when {
             path.endsWith(".fasta") -> FastaSeqReader(file)
             path.endsWith(".fastq") -> FastqSeqReader(file)
