@@ -42,16 +42,43 @@ class DebruijnGraph(kmers1: Set<Kmer>) {
         edges[from][c]!!.coverage += 1
     }
 
-    fun removeEdges(coverageTrashhold: Double) {
+    fun removeEdges(shouldRemove: (Edge) -> Boolean) {
         for (v in kmers.indices) {
             for (c in nucleotidesSts.indices) {
                 val edge = edges[v][c]
-                if (edge != null && edge.coverageAverage < coverageTrashhold) {
-                    edges[v][c] = null
+                if (edge != null && shouldRemove(edge)) {
+                    removeEdge(edge)
                 }
             }
         }
         removeUnusedVertices()
+    }
+
+    fun removeTails() {
+        val curEdges = allEdges()
+        val longestCoverage = curEdges.maxBy { it.str.length }!!.coverageAverage
+        val lenCut = 1.5 * K
+
+        removeEdges { edge ->
+            (degIn(edge.from) == 0 || degOut(edge.to) == 0)
+            && (edge.coverageAverage < longestCoverage / 2.0)
+            && (edge.str.length < lenCut)
+        }
+
+        contract()
+
+        removeEdges { edge ->
+            (degIn(edge.from) == 0 || degOut(edge.to) == 0)
+            && (edge.str.length < lenCut)
+        }
+
+        contract()
+    }
+
+    private fun removeEdge(edge: Edge) {
+        val revE = edge.revEdge()
+        edges[revE.from][revE.firstNucleotideCode] = null
+        edges[edge.from][edge.firstNucleotideCode] = null
     }
 
     fun contract() {
@@ -149,5 +176,19 @@ class DebruijnGraph(kmers1: Set<Kmer>) {
 
         val fullString: String
             get() = kmers[from] + str
+
+        fun revEdge(): Edge {
+            val newFrom = revVertex[to]
+            val newTo = revVertex[from]
+            for (edge in edges[newFrom]) {
+                if (edge != null && edge.to == newTo) {
+                    return edge
+                }
+            }
+            throw IllegalStateException("rev edge not found")
+        }
+
+        internal val firstNucleotideCode: Int
+            get() = nucleotideCode(str[0])
     }
 }

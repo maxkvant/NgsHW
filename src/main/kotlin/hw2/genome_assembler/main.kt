@@ -32,8 +32,11 @@ fun buildGraph(reader: SeqReader): DebruijnGraph {
     }
 
     val lowCoverage = min(10.0, 0.1 * debruijnGraph.allEdges().map { it.coverageAverage }.average())
-    debruijnGraph.removeEdges(lowCoverage)
+    debruijnGraph.removeEdges {
+        it.coverageAverage < lowCoverage
+    }
     debruijnGraph.contract()
+    debruijnGraph.removeTails()
     return debruijnGraph
 }
 
@@ -77,17 +80,18 @@ fun toDotStr(edges: List<DebruijnGraph.Edge>): String {
 fun main(args: Array<String>) {
     val inputDir = "/media/maxim/DATA/Downloads/NGS/data"
 
-    val paths = listOf(
-            "ECOLI_IS220_QUAKE_1K_paired_reads.fasta"
-            , "ECOLI_IS220_QUAKE_1K_single_reads.fasta"
-            , "s_6.first10000.fastq"
+    val pathsAll = listOf(
+    //        "ECOLI_IS220_QUAKE_1K_paired_reads.fasta"
+    //        , "ECOLI_IS220_QUAKE_1K_single_reads.fasta"
+            "s_6.first10000.fastq"
             , "s_6.first1000.fastq"
-            , "test1.fasta"
-            , "test2.fasta"
+    //        , "test1.fasta"
+    //        , "test2.fasta"
             , "s_6.first100000.fastq"
     )
 
-    paths.forEach { path ->
+
+    pathsAll.forEach { path ->
         val file = File("$inputDir/$path")
         val name = path.substring(0, path.length - ".fast_".length)
         val reader = when {
