@@ -31,12 +31,9 @@ fun buildGraph(reader: SeqReader): DebruijnGraph {
         }
     }
 
-    val lowCoverage = min(10.0, 0.1 * debruijnGraph.allEdges().map { it.coverageAverage }.average())
-    debruijnGraph.removeEdges {
-        it.coverageAverage < lowCoverage
-    }
     debruijnGraph.contract()
     debruijnGraph.removeTails()
+    debruijnGraph.removeBulges()
     return debruijnGraph
 }
 
@@ -64,7 +61,7 @@ fun outputFasta(edges: List<DebruijnGraph.Edge>, fileName: String) {
 }
 
 fun toDotStr(edges: List<DebruijnGraph.Edge>): String {
-    val vertices = edges.flatMap { listOf(it.fromStr, it.toStr) } .toSet()
+    val vertices = edges.flatMap { listOf(it.from, it.to) } .toSet()
     val sb = StringBuilder()
     vertices.forEach {
         sb.appendln(it)
@@ -72,7 +69,7 @@ fun toDotStr(edges: List<DebruijnGraph.Edge>): String {
     sb.appendln()
     edges.forEach { edge ->
         val label = "len=${edge.str.length}\ncov=${edge.coverageAverage.roundToInt()}"
-        sb.appendln("${edge.fromStr} -> ${edge.toStr} [label=\"$label\"]")
+        sb.appendln("${edge.from} -> ${edge.to} [label=\"$label\"]")
     }
     return "digraph debruijn {\n" + sb.toString() + "}\n"
 }

@@ -42,6 +42,30 @@ class DebruijnGraph(kmers1: Set<Kmer>) {
         edges[from][c]!!.coverage += 1
     }
 
+    fun removeBulges() {
+        for (v in vertices) {
+            if (degIn(v) == 1 && degOut(v) > 1) {
+                val edge = edges[v].filterNotNull().maxBy { it.coverageAverage }!!
+                if (edge.str.length > 2 * K) {
+                    continue
+                }
+                val simpleBulge = edges[v].filterNotNull().all {
+                    kotlin.math.abs(it.str.length - edge.str.length) < 1
+                    && it.to == edge.to
+                } && (edge.to != v)
+                if (simpleBulge) {
+                    edges[v].filterNotNull().forEach {
+                        if (it != edge) {
+                            removeEdge(it)
+                        }
+                    }
+                }
+            }
+        }
+
+        contract()
+    }
+
     fun removeEdges(shouldRemove: (Edge) -> Boolean) {
         for (v in kmers.indices) {
             for (c in nucleotidesSts.indices) {
@@ -61,8 +85,16 @@ class DebruijnGraph(kmers1: Set<Kmer>) {
 
         removeEdges { edge ->
             (degIn(edge.from) == 0 || degOut(edge.to) == 0)
-            && (edge.coverageAverage < longestCoverage / 2.0)
+            && (edge.coverageAverage < longestCoverage / 3.0)
             && (edge.str.length < lenCut)
+        }
+
+        contract()
+
+        val longestCoverage2 = curEdges.maxBy { it.str.length }!!.coverageAverage
+
+        removeEdges { edge ->
+            (edge.coverageAverage < longestCoverage2 * 0.1) && (edge.str.length < lenCut)
         }
 
         contract()
