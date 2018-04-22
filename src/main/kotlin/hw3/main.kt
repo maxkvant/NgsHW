@@ -14,22 +14,6 @@ val datasetDir = "/Johnny/students/NGS/data/6"
 val outDir = "hw3_output"
 val readLen = 100
 
-fun reverseComplement(str: String): String {
-    val chars = str.toLowerCase().toCharArray()
-    chars.reverse()
-    for (i in chars.indices) {
-        val c = chars[i]
-        chars[i] = when (c) {
-            'a' -> 't'
-            't' -> 'a'
-            'g' -> 'c'
-            'c' -> 'g'
-            else -> 'n'
-        }
-    }
-    return String(chars).toUpperCase()
-}
-
 fun Boolean.toInt() = if (this) 1 else 0
 
 class Dataset(val reference: String, val reads: List<String>)
@@ -67,6 +51,22 @@ fun runQuake(reads: List<String>): List<String> {
     return readsCorrected
 }
 
+fun reverseComplement(str: String): String {
+    val chars = str.toLowerCase().toCharArray()
+    chars.reverse()
+    for (i in chars.indices) {
+        val c = chars[i]
+        chars[i] = when (c) {
+            'a' -> 't'
+            't' -> 'a'
+            'g' -> 'c'
+            'c' -> 'g'
+            else -> 'n'
+        }
+    }
+    return String(chars).toUpperCase()
+}
+
 fun main(args: Array<String>) {
     println("mainStarted")
     val dataset10K = Dataset(
@@ -79,7 +79,7 @@ fun main(args: Array<String>) {
             reads = listOf("$datasetDir/ecoli_400K_err_1.fastq", "$datasetDir/ecoli_400K_err_2.fastq")
     )
 
-    val dataset = dataset10K
+    val dataset = dataset400K
 
     val reads: List<String> = dataset.reads.map { readsFile ->
         val newName = "$outDir/${File(readsFile).getName()}"
@@ -115,13 +115,11 @@ fun main(args: Array<String>) {
 
     val errorsCount = Array<IntArray>(2, { IntArray(2) })
 
-    var iter = 0
     while (samIterators.any { it.hasNext() }) {
-        iter++
         for (i in samReaders.indices) {
             if (samIterators[i].hasNext()) {
                 val samRecord: SAMRecord = samIterators[i].next()
-                if (samRecord.cigarString != "${readLen}M") {
+                if ((samRecord.alignmentBlocks.firstOrNull()?.getLength() ?: 0) < 0.9 * readLen) {
                     continue
                 }
                 val name: String = samRecord.readName + "/" + samRecord.firstOfPairFlag
@@ -130,31 +128,26 @@ fun main(args: Array<String>) {
                     val samRecords: Array<SAMRecord> = arrayOf(samMaps[0][name]!!, samMaps[1][name]!!)
                     if (samRecords[0].alignmentStart == samRecords[1].alignmentStart) {
                         val readSeqs: Array<String> = samRecords.map { it.readString }.toTypedArray<String>()
+                        val firstBlocks = samRecords.map { it.alignmentBlocks.first() }
+                        val len = firstBlocks.map { it.getLength() }.min()!!
+                        val readStarts = firstBlocks.map { it.getReadStart() - 1 }
+                        require(firstBlocks[0].getReferenceStart() == samRecords[0].alignmentStart )
+                        require(firstBlocks[1].getReferenceStart() == samRecords[0].alignmentStart )
 
-                        fun processReadSeqs(readSeqs: Array<String>): Boolean {
-                            var errors0 = 0
-                            var errors1 = 0
-                            for (p in 0 until readLen) {
-                                val pos = p + samRecords[0].alignmentStart - 1
-                                val error0 = (readSeqs[0][p] != referenceSeq[pos]).toInt()
-                                val error1 = (readSeqs[1][p] != referenceSeq[pos]).toInt()
-                                errors0 += error0
-                                errors1 += error1
-                            }
-                            val threshold = 0.2 * readLen
-                            val maxErrors = kotlin.math.max(errors0, errors1)
-                            for (p in 0 until readLen) {
-                                val pos = p + samRecords[0].alignmentStart - 1
-                                val error0 = (readSeqs[0][p] != referenceSeq[pos]).toInt()
-                                val error1 = (readSeqs[1][p] != referenceSeq[pos]).toInt()
-                                if (maxErrors < threshold) {
-                                    errorsCount[error0][error1]++
-                                }
-                            }
-                            return maxErrors < threshold
+                        var errors0 = 0
+                        var errors1 = 0
+
+                        for (p in 0 until len) {
+                            val pos = p + samRecords[0].alignmentStart - 1
+                            val error0 = (readSeqs[0][p + readStarts[0]] != referenceSeq[pos]).toInt()
+                            val error1 = (readSeqs[1][p + readStarts[1]] != referenceSeq[pos]).toInt()
+                            errors0 += error0
+                            errors1 += error1
+                            errorsCount[error0][error1]++
                         }
-
-                        require(processReadSeqs(readSeqs) || processReadSeqs(readSeqs.map { reverseComplement(it) }.toTypedArray()))
+                        val threshold = 0.2 * readLen
+                        val maxErrors = kotlin.math.max(errors0, errors1)
+                        require(maxErrors < threshold)
                     }
                     samMaps.forEach {
                         it.remove(name)
