@@ -89,8 +89,6 @@ fun main(args: Array<String>) {
         newName
     }
 
-    exec("echo 1 > tmp1.txt")
-
     val readsCorrected = runQuake(reads)
     val samFile = "$outDir/aln.sam"
     val samCorrectedFile = "$outDir/aln_corrected.sam"
@@ -119,7 +117,7 @@ fun main(args: Array<String>) {
         for (i in samReaders.indices) {
             if (samIterators[i].hasNext()) {
                 val samRecord: SAMRecord = samIterators[i].next()
-                if ((samRecord.alignmentBlocks.firstOrNull()?.getLength() ?: 0) < 0.9 * readLen) {
+                if ((samRecord.alignmentBlocks.firstOrNull()?.getLength() ?: 0) < 0.5 * readLen) {
                     continue
                 }
                 val name: String = samRecord.readName + "/" + samRecord.firstOfPairFlag
@@ -129,7 +127,11 @@ fun main(args: Array<String>) {
                     if (samRecords[0].alignmentStart == samRecords[1].alignmentStart) {
                         val readSeqs: Array<String> = samRecords.map { it.readString }.toTypedArray<String>()
                         val firstBlocks = samRecords.map { it.alignmentBlocks.first() }
-                        val len = firstBlocks.map { it.getLength() }.min()!!
+                        val len = samRecords.map {
+                            it.alignmentBlocks.map { block ->
+                                block.getLength()
+                            }.sum()
+                        }.min()!!
                         val readStarts = firstBlocks.map { it.getReadStart() - 1 }
                         require(firstBlocks[0].getReferenceStart() == samRecords[0].alignmentStart )
                         require(firstBlocks[1].getReferenceStart() == samRecords[0].alignmentStart )
@@ -139,6 +141,9 @@ fun main(args: Array<String>) {
 
                         for (p in 0 until len) {
                             val pos = p + samRecords[0].alignmentStart - 1
+                            if (pos >= referenceSeq.length) {
+                                break
+                            }
                             val error0 = (readSeqs[0][p + readStarts[0]] != referenceSeq[pos]).toInt()
                             val error1 = (readSeqs[1][p + readStarts[1]] != referenceSeq[pos]).toInt()
                             errors0 += error0
