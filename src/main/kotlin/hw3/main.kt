@@ -1,6 +1,6 @@
 package hw3
+import common.execCmd
 import java.io.File
-import java.io.InputStream
 
 import htsjdk.samtools.SAMRecord
 import htsjdk.samtools.SAMRecordIterator
@@ -18,21 +18,9 @@ fun Boolean.toInt() = if (this) 1 else 0
 
 class Dataset(val reference: String, val reads: List<String>)
 
-fun exec(cmd: String): Int {
-    println(cmd)
-    val p = Runtime.getRuntime().exec(arrayOf("/bin/sh", "-c", cmd))
-    val exitCode: Int = p.waitFor()
-    p.getInputStream().bufferedReader().use { reader ->
-        reader.lineSequence().forEach { println(it) }
-    }
-    println("exitCode $exitCode")
-    println()
-    return exitCode
-}
-
 fun runMinimap2(reference: String, reads: List<String>, outFile: String) {
     val cmd = "$minimapPath -ax sr $reference ${reads.joinToString(" ")} > $outFile"
-    exec(cmd)
+    execCmd(cmd)
 }
 
 fun runQuake(reads: List<String>): List<String> {
@@ -46,25 +34,9 @@ fun runQuake(reads: List<String>): List<String> {
         it.println(reads.joinToString(" "))
     }
     val cmd = "python2 $datasetDir/Quake/bin/quake.py -k 15 -f $readNamesFile -p 16"
-    exec(cmd)
+    execCmd(cmd)
 
     return readsCorrected
-}
-
-fun reverseComplement(str: String): String {
-    val chars = str.toLowerCase().toCharArray()
-    chars.reverse()
-    for (i in chars.indices) {
-        val c = chars[i]
-        chars[i] = when (c) {
-            'a' -> 't'
-            't' -> 'a'
-            'g' -> 'c'
-            'c' -> 'g'
-            else -> 'n'
-        }
-    }
-    return String(chars).toUpperCase()
 }
 
 fun main(args: Array<String>) {
