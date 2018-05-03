@@ -94,6 +94,7 @@ class DebruijnGraph(kmers1: Set<Kmer>) {
         val longestCoverage2 = curEdges.maxBy { it.str.length }!!.coverageAverage
 
         removeEdges { edge ->
+            (degIn(edge.from) > 1 && degOut(edge.to) > 1)
             (edge.coverageAverage < longestCoverage2 * 0.1) && (edge.str.length < lenCut)
         }
 
