@@ -1,52 +1,49 @@
 package hw4
 
 import common.execCmd
-import com.github.sh0nk.matplotlib4j.Plot
 import htsjdk.samtools.SAMRecord
 import htsjdk.samtools.SamReaderFactory
-import htsjdk.samtools.fastq.FastqReader
-import htsjdk.samtools.reference.FastaSequenceFile
 import java.io.File
-import java.io.PrintWriter
-import java.util.*
 import kotlin.math.max
 import kotlin.math.min
 
-const val outDir = "hw4_output"
 const val insertSizeThreshold = 2000
 
-class Dataset(val reference: String, val leftReads: String, val rightReads: String)
-
-fun runPairedBowtie2(dataset: Dataset, samFileName: String) {
-    val indexFileName = "index"
-    val exitCode1 = execCmd("bowtie2-build ${dataset.reference} $indexFileName ")
+fun runBowtie2(dataset: Dataset, samFile: String) {
+    require(samFile.endsWith(".sam"))
+    val samFileName = samFile.substring(0, samFile.length - 4)
+    val indexFile = "${samFileName}_index"
+    val exitCode1 = execCmd("bowtie2-build ${dataset.reference} $indexFile ")
     require(exitCode1 == 0)
-    val cmd =
-            "bowtie2 -k 20 -x $indexFileName --very-sensitive --threads 16 " +
-            "-1 ${dataset.leftReads} -2 ${dataset.rightReads} " +
-            "> $samFileName"
 
+    val cmd = if (dataset.reads.size == 2) {
+        "bowtie2 -k 20 -x $indexFile --very-sensitive --threads 16 " +
+                "-1 ${dataset.reads[0]} -2 ${dataset.reads[1]} " +
+                "> $samFile"
+    } else {
+        "bowtie2 -k 20 -x $indexFile --very-sensitive --threads 16 " +
+                "-U ${dataset.reads[0]} " +
+                "> $samFile"
+
+    }
     val exitCode2 = execCmd(cmd)
-    print("exitCode = $exitCode2")
-    //require(exitCode2 == 0)
+    println("exitCode = $exitCode2")
 }
+
+fun runBwa(dataset: Dataset, samFile: String) {
+    require(samFile.endsWith(".sam"))
+    val samFileName = samFile.substring(0, samFile.length - 4)
+    val exitCode1 = execCmd("bwa index ${dataset.reference}")
+    require(exitCode1 == 0)
+
+    val cmd = "bwa mem ${dataset.reference} ${dataset.reads.joinToString(" ")}"
+    val exitCode2 = execCmd(cmd)
+    println("exitCode = $exitCode2")
+}
+
 
 fun insertSize(left: SAMRecord, right: SAMRecord): Int {
     return max(left.alignmentEnd, right.alignmentEnd) - min(left.alignmentStart, right.alignmentStart)
-}
-
-fun forSamRecords(samFile: String, f: (SAMRecord, SAMRecord) -> Unit) {
-    val samRecordIterator = SamReaderFactory.makeDefault().open(File(samFile)).iterator()
-    while (samRecordIterator.hasNext()) {
-        val left = samRecordIterator.next()
-        if (!samRecordIterator.hasNext()) {
-            continue
-        }
-        val right = samRecordIterator.next()
-        if (insertSize(left, right) < insertSizeThreshold) {
-            f(left, right)
-        }
-    }
 }
 
 fun fixName(name: String): String {
@@ -57,187 +54,102 @@ fun fixName(name: String): String {
     }
 }
 
-const val nucleotides = "acgt"
+fun forSamRecordsPaired(samFile: String, f: (SAMRecord, SAMRecord) -> Unit) {
+    val samRecordIterator = SamReaderFactory.makeDefault().open(File(samFile)).iterator()
+    var iter = 0
 
-fun nucleotideCode(c: Char): Int = "${nucleotides}n".indexOf(c.toLowerCase())
+    while (samRecordIterator.hasNext()) {
+        iter += 1
+        if (iter % 1000000 == 0) {
+            println("iteration $iter")
+        }
 
-fun runTask1(dataset: Dataset, datasetName: String) {
-    println("task1")
+        val left = samRecordIterator.next()
+        if (!samRecordIterator.hasNext()) {
+            continue
+        }
+        val right = samRecordIterator.next()
 
-    val samFile = "$outDir/${datasetName}_aln.sam"
-    runPairedBowtie2(dataset, samFile)
-
-    val insertSizes: MutableMap<Int, Int> = TreeMap()
-
-    val referenceStr: String = FastaSequenceFile(File(dataset.reference), false).use {
-        it.nextSequence().baseString
+        if (insertSize(left, right) < insertSizeThreshold) {
+            f(left, right)
+        }
     }
+}
 
-    val fastqNames = mutableSetOf<String>()
-
-    for (fastqFile in listOf(dataset.leftReads, dataset.rightReads)) {
-        FastqReader(File(fastqFile)).use {
-            it.forEach { fastqRecord ->
-                fastqNames.add(fixName(fastqRecord.readName))
+fun forSamRecordsSingle(samFile: String, paired: Boolean, f: (SAMRecord) -> Unit) {
+    if (paired) {
+        forSamRecordsPaired(samFile, { left, right ->
+            f(left)
+            f(right)
+        })
+    } else {
+        val samRecordIterator = SamReaderFactory.makeDefault().open(File(samFile)).iterator()
+        var iter = 0
+        samRecordIterator.forEach {
+            iter += 1
+            if (iter % 1000000 == 0) {
+                println("iteration $iter")
             }
+            f(it)
         }
     }
+}
 
-    val n = referenceStr.length
-    val coverage = Array(n, { 0 })
-    val coverageOtherVariants = Array(n, { 0 })
-    val substitutionCount: Array<Array<Int>> = Array(4, { Array(4, { 0 }) })
-
-    val allReads = fastqNames.size
-
-    forSamRecords(samFile, { left, right ->
-        val insertSize = insertSize(left, right)
-        left.readName = fixName(left.readName)
-        right.readName = fixName(right.readName)
-        require(left.readName == right.readName)
-        insertSizes[insertSize] = (insertSizes[insertSize] ?: 0) + 1
-        fastqNames.remove(left.readName)
-
-        for (samRead in arrayOf(left, right)) {
-            for (alignmentBlock in samRead.alignmentBlocks) {
-                for (pos in 0 until alignmentBlock.length) {
-                    val posRead = alignmentBlock.readStart - 1
-                    val posReference = alignmentBlock.referenceStart - 1
-                    val cRead = nucleotideCode(samRead.readString[posRead])
-                    val cRef = nucleotideCode(referenceStr[posReference])
-                    coverage[posReference] += 1
-                    if (cRead != cRead) {
-                        coverageOtherVariants[posReference] += 1
-                    }
-                    if (cRead >= 4 || cRef >= 4) {
-                        continue
-                    }
-                    substitutionCount[cRef][cRead] += 1
-                }
-            }
-        }
-    })
-
-    forSamRecords(samFile, { left, right ->
-        val insertSize = insertSize(left, right)
-        left.readName = fixName(left.readName)
-        right.readName = fixName(right.readName)
-        require(left.readName == right.readName)
-        insertSizes[insertSize] = (insertSizes[insertSize] ?: 0) + 1
-        fastqNames.remove(left.readName)
-
-        for (samRead in arrayOf(left, right)) {
-            for (alignmentBlock in samRead.alignmentBlocks) {
-                for (pos in 0 until alignmentBlock.length) {
-                    val posRead = alignmentBlock.readStart - 1
-                    val posReference = alignmentBlock.referenceStart - 1
-                    val cRead = nucleotideCode(samRead.readString[posRead])
-                    val cRef = nucleotideCode(referenceStr[posReference])
-                    coverage[posReference] += 1
-                    if (cRef != cRead) {
-                        coverageOtherVariants[posReference] += 1
-                    }
-                }
-            }
-        }
-    })
-
-    forSamRecords(samFile, { left, right ->
-        for (samRead in arrayOf(left, right)) {
-            for (alignmentBlock in samRead.alignmentBlocks) {
-                for (pos in 0 until alignmentBlock.length) {
-                    val posRead = alignmentBlock.readStart - 1
-                    val posReference = alignmentBlock.referenceStart - 1
-                    val cRead = nucleotideCode(samRead.readString[posRead])
-                    val cRef = nucleotideCode(referenceStr[posReference])
-                    val covOther = coverageOtherVariants[posReference]
-                    val isSnp = covOther >= 3 && covOther > coverage[posReference] * 0.3
-                    if (isSnp || cRead >= 4 || cRef >= 4 || cRead == cRef) {
-                        continue
-                    }
-                    substitutionCount[cRef][cRead] += 1
-                }
-            }
-        }
-    })
-
-    val lostReads = fastqNames.size
-    val alignedReads = allReads - lostReads
-
-    val outFile = "$outDir/${datasetName}_out.txt"
-    val printer = PrintWriter(File(outFile))
-    printer.use {
-        it.println("readsAligned: $alignedReads (${alignedReads / allReads.toDouble()})")
-        it.println(nucleotides.toCharArray().joinToString(" ", "  "))
-        for (i in substitutionCount.indices) {
-            substitutionCount[i][i] = 0
-            it.print("${nucleotides[i]} ${substitutionCount[i].joinToString(" ")}")
-            it.println()
-        }
+fun runTask1(dataset: Dataset, datasetName: String, directory: String) {
+    val samFile = "$directory/${datasetName}_aln.sam"
+    if (!File(samFile).exists()) {
+        runBowtie2(dataset, samFile)
     }
+    val processor = DatasetProcessor(
+            dataset = dataset,
+            datasetName = datasetName,
+            samFile = samFile,
+            directory = directory
+    )
 
-    fun plotInsertSize() {
-        val plt: Plot = Plot.create()
-        plt.ylabel("# reads")
-        plt.xlabel("insertSize")
-        plt.plot().add(insertSizes.map { it.key },
-                insertSizes.map { it.value },
-                "r+")
+    processor.plotCoverage()
 
-        plt.savefig("$outDir/${datasetName}_insert_size.png").dpi(200.0)
-        plt.executeSilently()
+    val tasks = listOf(
+            { processor.countAlignedReads() },
+            { processor.plotInsertSizes() },
+            { processor.countSubstitutionTable() }
+    )
+    tasks.parallelStream().forEach {
+        it.invoke()
     }
-
-    fun plotCoverage() {
-        val coverageAverages = mutableListOf<Double>()
-        val positions = mutableListOf<Double>()
-        val stepLen = 50
-        val windowSize = 1000
-        for (i in 0 until coverage.size - windowSize step stepLen) {
-            val average: Double = coverage.sliceArray(i until min(coverage.size, i + windowSize)).average()
-            coverageAverages.add(average)
-            positions.add(i + windowSize / 2.0)
-        }
-
-        val plt: Plot = Plot.create()
-        plt.ylabel("coverage")
-        plt.xlabel("pos")
-        plt.plot().add(positions,
-                coverageAverages,
-                "r+")
-
-        plt.savefig("$outDir/${datasetName}_coverage.png").dpi(200.0)
-        plt.executeSilently()
-    }
-
-    plotInsertSize()
-    plotCoverage()
 }
 
 fun main(args: Array<String>) {
+    val outDir = "hw4_output"
+
     val dataDir = "/Johnny/students/NGS/data/4/E.coli"
     val testDataset = Dataset(
             "$dataDir/MG1655-K12.first10K.fasta",
-            "$dataDir/test_1.fastq",
-            "$dataDir/test_2.fastq"
+            listOf("$dataDir/test_1.fastq",
+                    "$dataDir/test_2.fastq")
     )
 
     val runDataset1 = Dataset(
             "$dataDir/MG1655-K12.fasta",
-            "$dataDir/ecoli_mda_lane1_left.fastq.00.cor.fastq",
-            "$dataDir/ecoli_mda_lane1_right.fastq.00.cor.fastq"
+            listOf("$dataDir/ecoli_mda_lane1_left.fastq.00.cor.fastq",
+                    "$dataDir/ecoli_mda_lane1_right.fastq.00.cor.fastq")
     )
 
     val runDataset2 = Dataset(
             "$dataDir/MG1655-K12.fasta",
-            "$dataDir/s_6_1.fastq",
-            "$dataDir/s_6_2.fastq"
+            listOf("$dataDir/s_6_1.fastq",
+                    "$dataDir/s_6_2.fastq")
     )
 
     File(outDir).mkdirs()
 
-    //runTask1(testDataset, "test")
-
-    runTask1(runDataset1, "e_coli_mda_lane")
-    runTask1(runDataset2, "e_coli_s_6")
+    val tasks = listOf(
+        { runTask1(testDataset, "test", outDir) },
+        { runTask1(runDataset1, "e_coli_mda_lane", outDir) },
+        { runTask1(runDataset2, "e_coli_s_6", outDir) }
+    )
+    tasks[0].invoke()
+    tasks.parallelStream().forEach {
+        it.invoke()
+    }
 }
