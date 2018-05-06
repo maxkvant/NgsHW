@@ -1,6 +1,7 @@
 package hw4
 
 import com.github.sh0nk.matplotlib4j.Plot
+import htsjdk.samtools.SAMRecord
 import htsjdk.samtools.fastq.FastqReader
 import htsjdk.samtools.reference.FastaSequenceFile
 import java.io.File
@@ -10,7 +11,7 @@ import kotlin.math.min
 
 class DatasetProcessor(
         val dataset: Dataset,
-        val datasetName: String,
+        val runName: String,
         val samFile: String,
         val directory: String
 ) {
@@ -28,7 +29,7 @@ class DatasetProcessor(
 
     private val referenceChars: CharArray = referenceStr.toCharArray()
     private val n = referenceStr.length
-    private val paired = dataset.reads.size == 2
+    private val paired = dataset.paired
 
     private inner class CoverageStats {
         val coverage = Array(n, { 0 })
@@ -45,9 +46,11 @@ class DatasetProcessor(
             val stats = CoverageStats()
             forSamRecordsSingle(samFile, paired, { samRead ->
                 for (alignmentBlock in samRead.alignmentBlocks) {
+                    val readStart = alignmentBlock.readStart - 1
+                    val referenceStart = alignmentBlock.referenceStart - 1
                     for (pos in 0 until alignmentBlock.length) {
-                        val posRead = alignmentBlock.readStart - 1
-                        val posReference = alignmentBlock.referenceStart - 1
+                        val posRead = pos + readStart
+                        val posReference = pos + referenceStart
                         val cRead = nucleotideCode(samRead.readString[posRead])
                         val cRef = nucleotideCode(referenceStr[posReference])
                         stats.coverage[posReference] += 1
@@ -68,6 +71,12 @@ class DatasetProcessor(
         println("calculating substitution table")
         val indelLen = mutableMapOf<Int, Int>()
 
+        var substitutions: Long = 0
+        var insertions: Long = 0
+        var substitutionQualitySum: Long = 0
+        var insertionQualitySum: Long = 0
+
+
         forSamRecordsSingle(samFile, paired, { samRead ->
             var alignedChars = 0
             var commonChars = 0
@@ -87,10 +96,13 @@ class DatasetProcessor(
                             if (cRead >= nucleotides.length || cRef >= nucleotides.length) {
                                 continue
                             }
-                            substitutionCount[cRef][cRead] += 1
                             alignedChars++
                             if (cRef == cRead) {
                                 commonChars++
+                            } else {
+                                substitutionCount[cRef][cRead] += 1
+                                substitutions++
+                                substitutionQualitySum += samRead.baseQualities[posRead]
                             }
                         }
                     is Insertion ->
@@ -105,6 +117,9 @@ class DatasetProcessor(
                             substitutionCount[cRef][cRead] += 1
                             alignedChars++
                             indelLen[block.seq.length] = (indelLen[block.seq.length] ?: 0) + 1
+
+                            insertions++
+                            insertionQualitySum += samRead.baseQualities[posRead]
                         }
                     is Deletion ->
                         for (pos in block.seq.indices) {
@@ -124,21 +139,32 @@ class DatasetProcessor(
             }
         })
 
-        val outFile = "$directory/${datasetName}_substitutions.txt"
+        val outFile = "$directory/${runName}_substitutions.txt"
         PrintWriter(File(outFile)).use {
             it.println(nucleotides.toCharArray().joinToString(" ", "  "))
             for (i in substitutionCount.indices) {
                 substitutionCount[i][i] = 0
-                it.print("${nucleotides[i]} ${substitutionCount[i].joinToString(" ")}")
-                it.println()
+                it.println("${nucleotides[i]} ${substitutionCount[i].joinToString(" ")}")
             }
+
+            it.println(nucleotides.toCharArray().joinToString(" ", "  "))
+
+            for (i in substitutionCount.indices) {
+                substitutionCount[i][i] = 0
+                val substutionSum = substitutionCount[i].sum().toDouble()
+                val normCount = substitutionCount[i].map { it / substutionSum }
+                it.println("${nucleotides[i]} ${normCount.joinToString(" ")}")
+            }
+            it.println("substitutionAverageQuality: ${substitutionQualitySum / substitutions.toDouble()} ")
+            it.println("insertionAverageQuality: ${insertionQualitySum / insertions.toDouble()} ")
+
         }
 
         val plt: Plot = Plot.create()
         plt.ylabel("count")
         plt.xlabel("indel len")
         plt.plot().add(indelLen.map { it.key }, indelLen.map { it.value }, "r+")
-        plt.savefig("$directory/${datasetName}_indel_len.png").dpi(200.0)
+        plt.savefig("$directory/${runName}_indel_len.png").dpi(200.0)
         plt.executeSilently()
     }
 
@@ -157,7 +183,7 @@ class DatasetProcessor(
         plt.ylabel("# reads")
         plt.xlabel("insertSize")
         plt.plot().add(insertSizes.map { it.key }, insertSizes.map { it.value }, "r+")
-        plt.savefig("$directory/${datasetName}_insert_size.png").dpi(200.0)
+        plt.savefig("$directory/${runName}_insert_size.png").dpi(200.0)
         plt.executeSilently()
 
         val reads = insertSizes.map { it.value }.sum()
@@ -180,7 +206,7 @@ class DatasetProcessor(
         plt2.plot().add(insertSizes.map { it.key }, insertSizes.map { it.value }, "r+")
         plt2.title("95% confidence interval")
         plt2.xlim(intervalBegin, intervalEnd)
-        plt2.savefig("$directory/${datasetName}_insert_size_2.png").dpi(200.0)
+        plt2.savefig("$directory/${runName}_insert_size_2.png").dpi(200.0)
         plt2.executeSilently()
     }
 
@@ -202,10 +228,18 @@ class DatasetProcessor(
         plt.ylabel("coverage")
         plt.xlabel("pos")
         plt.plot().add(positions, coverageAverages, "r+")
-        plt.savefig("$directory/${datasetName}_coverage.png").dpi(200.0)
+        plt.savefig("$directory/${runName}_coverage.png").dpi(200.0)
         plt.executeSilently()
 
+        val lowCoverage = 5
+        val covered = coverage.count { it > 0 }
+        val coveredGood = coverage.count { it > lowCoverage }
 
+        val outFile = "$directory/${runName}_coverage.txt"
+        PrintWriter(File(outFile)).use {
+            it.println("covered $covered (${covered / n.toDouble() * 100}%)")
+            it.println("coveredGood $coveredGood (${coveredGood / n.toDouble() * 100}%)")
+        }
     }
 
     fun countAlignedReads() {
@@ -228,7 +262,7 @@ class DatasetProcessor(
         val lostReads = fastqNames.size
         val alignedReads = allReads - lostReads
 
-        val outFile = "$directory/${datasetName}_read_count.txt"
+        val outFile = "$directory/${runName}_read_count.txt"
         PrintWriter(File(outFile)).use {
             it.println("allReads $allReads")
             it.println("alignedReads $alignedReads: ${alignedReads / allReads.toDouble() * 100}%")
@@ -256,26 +290,43 @@ class DatasetProcessor(
         forSamRecordsSingle(samFile, paired, { samRead ->
             for (alignmentBlock in samRead.alignmentBlocks) {
                 var pos = 0
+                val readStart = alignmentBlock.readStart - 1
+                val referenceStart = alignmentBlock.referenceStart - 1
                 while (pos < alignmentBlock.length) {
-                    val posRead = alignmentBlock.readStart - 1
-                    val posReference = alignmentBlock.referenceStart - 1
+                    val posRead = pos + readStart
+                    val posReference = pos + referenceStart
                     val cRead = samRead.readString[posRead]
                     val cRef = referenceStr[posReference]
                     if (cRead == cRef) {
                         val refRange = extendMonomer(referenceStr, posReference)
                         val refLen = refRange.second - refRange.first
+
                         val readRange = extendMonomer(samRead.readString, posRead)
                         val readLen = readRange.second - readRange.first
 
-                        if (minLen <= refLen && refLen <= lenThreshold) {
-                            monomerCount[refLen][readLen - readLen] = (monomerCount[refLen][readLen - readLen] ?: 0) + 1
+                        val delta = readLen - refLen
+                        if (minLen <= refLen && refLen <= lenThreshold && delta != 0) {
+                            monomerCount[refLen][delta] = (monomerCount[refLen][delta] ?: 0) + 1
                         }
-                        pos = refRange.second
+                        pos = refRange.second - referenceStart
                     } else {
                         pos += 1
                     }
                 }
             }
         })
+
+        for (i in minLen..lenThreshold) {
+            if (!monomerCount[i].isEmpty()) {
+                val plt: Plot = Plot.create()
+                plt.ylabel("count")
+                plt.xlabel("indel len")
+                plt.plot().add(monomerCount[i].map { it.key }, monomerCount[i].map { it.value }, "r+")
+                plt.savefig("$directory/${runName}_monomers_$i.png").dpi(200.0)
+                plt.executeSilently()
+            }
+        }
     }
+
+
 }
