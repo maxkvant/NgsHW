@@ -287,30 +287,51 @@ class DatasetProcessor(
         val minLen = 3
         val monomerCount = Array<MutableMap<Int,Int> >(lenThreshold + 1, { mutableMapOf() })
 
+        fun isMonomer(string: String): Boolean {
+            for (c in string) {
+                if (c != string[0]) {
+                    return false
+                }
+            }
+            return true
+        }
+
+        fun addMonomerCount(refLen: Int, delta: Int) {
+            if (minLen <= refLen && refLen <= lenThreshold && delta != 0) {
+                monomerCount[refLen][delta] = (monomerCount[refLen][delta] ?: 0) + 1
+            }
+        }
+
         forSamRecordsSingle(samFile, paired, { samRead ->
-            for (alignmentBlock in samRead.alignmentBlocks) {
-                var pos = 0
-                val readStart = alignmentBlock.readStart - 1
-                val referenceStart = alignmentBlock.referenceStart - 1
-                while (pos < alignmentBlock.length) {
-                    val posRead = pos + readStart
-                    val posReference = pos + referenceStart
-                    val cRead = samRead.readString[posRead]
-                    val cRef = referenceStr[posReference]
-                    if (cRead == cRef) {
-                        val refRange = extendMonomer(referenceStr, posReference)
-                        val refLen = refRange.second - refRange.first
-
-                        val readRange = extendMonomer(samRead.readString, posRead)
-                        val readLen = readRange.second - readRange.first
-
-                        val delta = readLen - refLen
-                        if (minLen <= refLen && refLen <= lenThreshold && delta != 0) {
-                            monomerCount[refLen][delta] = (monomerCount[refLen][delta] ?: 0) + 1
+            for (block in samRead.parseCigar(referenceChars)) {
+                if (!isMonomer(block.seq)) {
+                    continue
+                }
+                val readStr = samRead.readString
+                val c = block.seq[0]
+                when (block) {
+                    is Insertion -> {
+                        val posRef = block.readBegin
+                        val delta = block.seq.length
+                        if (posRef < referenceStr.length && referenceStr[posRef] == c) {
+                            val (l, r) = extendMonomer(referenceStr, posRef)
+                            addMonomerCount(r - l, delta)
+                        } else if (posRef - 1 >= 0 && referenceStr[posRef - 1] == c) {
+                            val (l, r) = extendMonomer(referenceStr, posRef - 1)
+                            addMonomerCount(r - l, delta)
                         }
-                        pos = refRange.second - referenceStart
-                    } else {
-                        pos += 1
+                    }
+                    is Deletion -> {
+                        val posRead = block.readBegin
+                        val delta = -block.seq.length
+
+                        if (posRead < readStr.length && readStr[posRead] == c) {
+                            val (l, r) = extendMonomer(readStr, posRead)
+                            addMonomerCount(r - l + block.seq.length, delta)
+                        } else if (posRead - 1 >= 0 && readStr[posRead - 1] == c) {
+                            val (l, r) = extendMonomer(readStr, posRead - 1)
+                            addMonomerCount(r - l + block.seq.length, delta)
+                        }
                     }
                 }
             }
@@ -327,6 +348,4 @@ class DatasetProcessor(
             }
         }
     }
-
-
 }

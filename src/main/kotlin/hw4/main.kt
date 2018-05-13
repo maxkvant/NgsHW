@@ -35,7 +35,7 @@ fun task1(outDir: String) {
             { runTask1(runDataset2, "e_coli_s_6", outDir) }
     )
     tasks.parallelStream().forEach {
-    //    it.invoke()
+        it.invoke()
     }
 }
 
@@ -77,6 +77,6 @@ fun main(args: Array<String>) {
 
     File(outDir).mkdirs()
 
-    //task1(outDir)
+    task1(outDir)
     task2(outDir)
 }
