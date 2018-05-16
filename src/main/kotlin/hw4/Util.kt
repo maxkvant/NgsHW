@@ -2,12 +2,8 @@ package hw4
 
 import common.execCmd
 import htsjdk.samtools.SAMRecord
-import htsjdk.samtools.SamReaderFactory
-import java.io.File
 import kotlin.math.max
 import kotlin.math.min
-
-const val insertSizeThreshold = 2000
 
 fun runBowtie2(dataset: Dataset, samFile: String) {
     require(samFile.endsWith(".sam"))
@@ -49,47 +45,6 @@ fun fixName(name: String): String {
         name.substring(0, name.length - 2)
     } else {
         name
-    }
-}
-
-fun forSamRecordsPaired(samFile: String, f: (SAMRecord, SAMRecord) -> Unit) {
-    val samRecordIterator = SamReaderFactory.makeDefault().open(File(samFile)).iterator()
-    var iter = 0
-
-    while (samRecordIterator.hasNext()) {
-        iter += 1
-        if (iter % 1000000 == 0) {
-            println("iteration $iter")
-        }
-
-        val left = samRecordIterator.next()
-        if (!samRecordIterator.hasNext()) {
-            continue
-        }
-        val right = samRecordIterator.next()
-
-        if (insertSize(left, right) < insertSizeThreshold) {
-            f(left, right)
-        }
-    }
-}
-
-fun forSamRecordsSingle(samFile: String, paired: Boolean, f: (SAMRecord) -> Unit) {
-    if (paired) {
-        forSamRecordsPaired(samFile, { left, right ->
-            f(left)
-            f(right)
-        })
-    } else {
-        val samRecordIterator = SamReaderFactory.makeDefault().open(File(samFile)).iterator()
-        var iter = 0
-        samRecordIterator.forEach {
-            iter += 1
-            if (iter % 1000000 == 0) {
-                println("iteration $iter")
-            }
-            f(it)
-        }
     }
 }
 

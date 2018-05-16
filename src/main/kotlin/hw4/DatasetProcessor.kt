@@ -1,7 +1,9 @@
 package hw4
 
 import com.github.sh0nk.matplotlib4j.Plot
-import htsjdk.samtools.SAMRecord
+import common.forSamRecordsPaired
+import common.forSamRecordsSingle
+import common.insertSizeThreshold
 import htsjdk.samtools.fastq.FastqReader
 import htsjdk.samtools.reference.FastaSequenceFile
 import java.io.File
@@ -126,7 +128,7 @@ class DatasetProcessor(
                             val posReference = block.referenceBegin + pos
                             require(referenceStr[posReference] == block.seq[pos])
                             val cRead = nucleotideCode('_')
-                            val cRef= nucleotideCode(referenceStr[posReference])
+                            val cRef = nucleotideCode(referenceStr[posReference])
                             if (cRead >= nucleotides.length || cRef >= nucleotides.length) {
                                 continue
                             }
