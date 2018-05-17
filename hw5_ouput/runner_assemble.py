@@ -51,7 +51,7 @@ class Canu(Assembler):
         args += ["-d", self.outdir]
         args += ["useGrid=false"]
         args += ["genomeSize=5m"]
-        args += ["-nanopore-raw", self.dataset.long_reads]
+        args += ["-pacbio-raw", self.dataset.long_reads]
         return args
 
     def getContigs(self):

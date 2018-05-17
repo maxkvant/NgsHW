@@ -7,8 +7,10 @@ import java.io.File
 
 const val insertSizeThreshold = 2000
 
+fun getSamIterator(samFile: String) = SamReaderFactory.makeDefault().open(File(samFile)).iterator()
+
 fun forSamRecordsPaired(samFile: String, f: (SAMRecord, SAMRecord) -> Unit) {
-    val samRecordIterator = SamReaderFactory.makeDefault().open(File(samFile)).iterator()
+    val samRecordIterator = getSamIterator(samFile)
     var iter = 0
 
     while (samRecordIterator.hasNext()) {
@@ -36,7 +38,7 @@ fun forSamRecordsSingle(samFile: String, paired: Boolean, f: (SAMRecord) -> Unit
             f(right)
         })
     } else {
-        val samRecordIterator = SamReaderFactory.makeDefault().open(File(samFile)).iterator()
+        val samRecordIterator = getSamIterator(samFile)
         var iter = 0
         samRecordIterator.forEach {
             iter += 1

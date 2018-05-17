@@ -14,7 +14,7 @@ version '1.0-SNAPSHOT'
 apply plugin: 'java'
 apply plugin: 'kotlin'
 apply plugin: 'application'
-mainClassName = 'hw4.MainKt'
+mainClassName = 'hw6.MainKt'
 
 sourceCompatibility = 1.8
 
